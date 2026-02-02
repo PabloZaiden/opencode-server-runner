@@ -3,27 +3,6 @@
 # Detect OS
 OS="$(uname -s)"
 
-# Install dependencies on Linux if needed
-if [ "$OS" = "Linux" ]; then
-  MISSING_DEPS=""
-  if ! command -v uuidgen &> /dev/null; then
-    MISSING_DEPS="uuid-runtime"
-  fi
-  
-  if [ -n "$MISSING_DEPS" ]; then
-    echo "Installing missing dependencies: $MISSING_DEPS"
-    if command -v apt-get &> /dev/null; then
-      sudo apt-get update && sudo apt-get install -y $MISSING_DEPS
-    elif command -v yum &> /dev/null; then
-      sudo yum install -y util-linux
-    elif command -v apk &> /dev/null; then
-      sudo apk add util-linux
-    else
-      echo "Warning: Could not install dependencies. Please install uuidgen manually."
-    fi
-  fi
-fi
-
 # Add opencode to PATH if not already there (installer puts it in ~/.opencode/bin)
 export PATH="$HOME/.opencode/bin:$PATH"
 
@@ -70,7 +49,14 @@ if [ -f "$PASSWORD_FILE" ]; then
 else
   # Generate new password and save it
   mkdir -p "$(dirname "$PASSWORD_FILE")"
-  OPENCODE_SERVER_PASSWORD=$(uuidgen)
+  # Try uuidgen first, fall back to /proc/sys/kernel/random/uuid (Linux), then openssl
+  if command -v uuidgen &> /dev/null; then
+    OPENCODE_SERVER_PASSWORD=$(uuidgen)
+  elif [ -f /proc/sys/kernel/random/uuid ]; then
+    OPENCODE_SERVER_PASSWORD=$(cat /proc/sys/kernel/random/uuid)
+  else
+    OPENCODE_SERVER_PASSWORD=$(openssl rand -hex 16)
+  fi
   echo "$OPENCODE_SERVER_PASSWORD" >"$PASSWORD_FILE"
 fi
 export OPENCODE_SERVER_PASSWORD
