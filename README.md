@@ -15,11 +15,11 @@ curl -fsSL https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/
 
 ## Requirements
 
-- macOS (uses `ipconfig` for network detection)
+- macOS or Linux
 - [Caddy](https://caddyserver.com/) installed
 - OpenSSL (for certificate generation)
 
-> **Note:** OpenCode CLI will be installed automatically if not present.
+> **Note:** OpenCode CLI and other dependencies will be installed automatically if not present.
 
 ## Usage
 

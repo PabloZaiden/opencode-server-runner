@@ -1,5 +1,29 @@
 #!/usr/bin/env bash
 
+# Detect OS
+OS="$(uname -s)"
+
+# Install dependencies on Linux if needed
+if [ "$OS" = "Linux" ]; then
+  MISSING_DEPS=""
+  if ! command -v uuidgen &> /dev/null; then
+    MISSING_DEPS="uuid-runtime"
+  fi
+  
+  if [ -n "$MISSING_DEPS" ]; then
+    echo "Installing missing dependencies: $MISSING_DEPS"
+    if command -v apt-get &> /dev/null; then
+      sudo apt-get update && sudo apt-get install -y $MISSING_DEPS
+    elif command -v yum &> /dev/null; then
+      sudo yum install -y util-linux
+    elif command -v apk &> /dev/null; then
+      sudo apk add util-linux
+    else
+      echo "Warning: Could not install dependencies. Please install uuidgen manually."
+    fi
+  fi
+fi
+
 # Add opencode to PATH if not already there (installer puts it in ~/.opencode/bin)
 export PATH="$HOME/.opencode/bin:$PATH"
 
@@ -29,8 +53,16 @@ LOG_FILE="$HOME/.config/opencode-server.log"
 OPENCODE_INTERNAL_PORT="4097"
 OPENCODE_HTTPS_PORT=${OPENCODE_PORT-"4096"}
 
-# Get IP address
-IP_ADDRESS=$(ipconfig getifaddr en0)
+# Get IP address (platform-specific)
+if [ "$OS" = "Darwin" ]; then
+  IP_ADDRESS=$(ipconfig getifaddr en0)
+else
+  # Linux: get first non-localhost IP
+  IP_ADDRESS=$(hostname -I 2>/dev/null | awk '{print $1}')
+  if [ -z "$IP_ADDRESS" ]; then
+    IP_ADDRESS=$(ip route get 1 2>/dev/null | awk '{print $7; exit}')
+  fi
+fi
 
 # Check if password file exists
 if [ -f "$PASSWORD_FILE" ]; then
