@@ -2,14 +2,27 @@
 
 A script to run [OpenCode](https://opencode.ai) server with HTTPS support via Caddy reverse proxy.
 
+## Quick Start
+
+```bash
+# Start the server
+curl -fsSL https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/main/opencode-server.sh | bash
+
+# Stop the server
+curl -fsSL https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/main/opencode-server.sh | bash -s -- --stop
+```
+
 ## Requirements
 
 - macOS (uses `ipconfig` for network detection)
-- [OpenCode](https://opencode.ai) CLI installed
 - [Caddy](https://caddyserver.com/) installed
 - OpenSSL (for certificate generation)
 
+> **Note:** OpenCode CLI will be installed automatically if not present.
+
 ## Usage
+
+If you have the script locally:
 
 ```bash
 # Start the server (runs in background)

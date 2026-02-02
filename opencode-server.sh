@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 
+# Check if opencode is installed, if not install it
+if ! command -v opencode &> /dev/null; then
+  echo "opencode is not installed. Installing..."
+  curl -fsSL https://opencode.ai/install | bash
+  
+  # Verify installation succeeded
+  if ! command -v opencode &> /dev/null; then
+    echo "Failed to install opencode. Please install it manually from https://opencode.ai"
+    exit 1
+  fi
+  echo "opencode installed successfully."
+fi
+
 # Configuration
 PASSWORD_FILE="$HOME/.config/opencode-server-local"
 PID_FILE="$HOME/.config/opencode-server.pid"
