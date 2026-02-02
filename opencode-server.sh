@@ -172,4 +172,4 @@ echo "Logs: $LOG_FILE"
 echo
 print_info
 echo "To stop the server, run:"
-echo "  curl -fsSL \"https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/main/opencode-server.sh?\$(date +%s)\" | bash -s -- --stop"
+echo "  curl -fsSL https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/main/opencode-server.sh | bash -s -- --stop"
