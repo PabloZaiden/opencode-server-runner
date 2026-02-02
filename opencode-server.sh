@@ -5,13 +5,10 @@ if ! command -v opencode &> /dev/null; then
   echo "opencode is not installed. Installing..."
   curl -fsSL https://opencode.ai/install | bash
   
-  # Refresh PATH by sourcing shell config files (the installer may have updated them)
-  # Try common shell config files
-  for rc_file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile"; do
-    if [ -f "$rc_file" ]; then
-      source "$rc_file" 2>/dev/null || true
-    fi
-  done
+  # Add opencode to PATH for this session
+  # The installer puts it in ~/.opencode/bin and updates shell rc files,
+  # but sourcing rc files doesn't work reliably in piped scripts (curl | bash)
+  export PATH="$HOME/.opencode/bin:$PATH"
   
   # Verify installation succeeded
   if ! command -v opencode &> /dev/null; then
