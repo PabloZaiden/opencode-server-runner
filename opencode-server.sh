@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 
+# Add opencode to PATH if not already there (installer puts it in ~/.opencode/bin)
+export PATH="$HOME/.opencode/bin:$PATH"
+
 # Check if opencode is installed, if not install it
 if ! command -v opencode &> /dev/null; then
   echo "opencode is not installed. Installing..."
-  curl -fsSL https://opencode.ai/install | bash
-  
-  # Add opencode to PATH for this session
-  # The installer puts it in ~/.opencode/bin and updates shell rc files,
-  # but sourcing rc files doesn't work reliably in piped scripts (curl | bash)
-  export PATH="$HOME/.opencode/bin:$PATH"
+  # Use bash -s to avoid stdin conflicts when this script is itself piped
+  curl -fsSL https://opencode.ai/install | bash -s --
   
   # Verify installation succeeded
   if ! command -v opencode &> /dev/null; then
