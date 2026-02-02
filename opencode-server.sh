@@ -171,4 +171,5 @@ echo "Caddy PID: $CADDY_PID"
 echo "Logs: $LOG_FILE"
 echo
 print_info
-echo "Use '$0 --stop' to stop the server."
+echo "To stop the server, run:"
+echo "  curl -fsSL \"https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/main/opencode-server.sh?\$(date +%s)\" | bash -s -- --stop"
