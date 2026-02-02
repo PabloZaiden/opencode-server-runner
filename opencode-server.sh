@@ -5,6 +5,14 @@ if ! command -v opencode &> /dev/null; then
   echo "opencode is not installed. Installing..."
   curl -fsSL https://opencode.ai/install | bash
   
+  # Refresh PATH by sourcing shell config files (the installer may have updated them)
+  # Try common shell config files
+  for rc_file in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile"; do
+    if [ -f "$rc_file" ]; then
+      source "$rc_file" 2>/dev/null || true
+    fi
+  done
+  
   # Verify installation succeeded
   if ! command -v opencode &> /dev/null; then
     echo "Failed to install opencode. Please install it manually from https://opencode.ai"
