@@ -30,7 +30,7 @@ CADDYFILE="$HOME/.config/opencode-caddyfile"
 LOG_FILE="$HOME/.config/opencode-server.log"
 
 OPENCODE_INTERNAL_PORT="4097"
-OPENCODE_HTTPS_PORT=${OPENCODE_PORT-"4096"}
+OPENCODE_HTTPS_PORT=${OPENCODE_PORT-"5000"}
 
 # Get IP address (platform-specific)
 if [ "$OS" = "Darwin" ]; then

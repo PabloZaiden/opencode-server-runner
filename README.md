@@ -6,7 +6,7 @@ A script to run [OpenCode](https://opencode.ai) server with HTTPS support via Ca
 
 ```bash
 # Start the server
-curl -fsSL https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/main/opencode-server.sh | bash
+curl -fsSL https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/main/opencode-server.sh | OPENCODE_PORT=5000 bash
 ```
 ```bash
 # Stop the server
