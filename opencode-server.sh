@@ -134,6 +134,23 @@ if is_running; then
   exit 0
 fi
 
+# Check if caddy is installed, if not install it (Linux only)
+if ! command -v caddy &> /dev/null; then
+  if [ "$OS" = "Linux" ]; then
+    echo "caddy is not installed. Installing via apt..."
+    sudo apt update && sudo apt install -y caddy
+    if ! command -v caddy &> /dev/null; then
+      echo "Failed to install caddy. Please install it manually."
+      exit 1
+    fi
+    echo "caddy installed successfully."
+  else
+    echo "caddy is not installed. Please install it manually."
+    echo "On macOS: brew install caddy"
+    exit 1
+  fi
+fi
+
 # Generate certificate if needed
 if [ ! -f "$CERT_FILE" ]; then
   generate_cert
