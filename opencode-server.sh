@@ -20,6 +20,34 @@ if ! command -v opencode &> /dev/null; then
   echo "opencode installed successfully."
 fi
 
+# Handle --skip-auth flag (for automated testing)
+SKIP_AUTH=false
+for arg in "$@"; do
+  if [ "$arg" = "--skip-auth" ]; then
+    SKIP_AUTH=true
+  fi
+done
+
+# Check if authenticated with GitHub Copilot (skip if --skip-auth or --stop)
+if [ "$SKIP_AUTH" = "false" ] && [ "$1" != "--stop" ]; then
+  AUTH_FILE="$HOME/.local/share/opencode/auth.json"
+  if [ ! -f "$AUTH_FILE" ] || ! grep -q "github-copilot" "$AUTH_FILE" 2>/dev/null; then
+    echo ""
+    echo "GitHub Copilot authentication required."
+    echo "A browser/device code flow will be initiated..."
+    echo ""
+    opencode auth login github-copilot
+    
+    # Verify auth succeeded
+    if [ ! -f "$AUTH_FILE" ] || ! grep -q "github-copilot" "$AUTH_FILE" 2>/dev/null; then
+      echo "GitHub Copilot authentication failed or was cancelled."
+      exit 1
+    fi
+    echo "GitHub Copilot authentication successful."
+    echo ""
+  fi
+fi
+
 # Configuration
 PASSWORD_FILE="$HOME/.config/opencode-server-local"
 PID_FILE="$HOME/.config/opencode-server.pid"
