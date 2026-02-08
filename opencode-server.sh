@@ -177,7 +177,7 @@ start_watchdog() {
         opencode serve --hostname 127.0.0.1 --port $OPENCODE_INTERNAL_PORT >> "$LOG_FILE" 2>&1 &
         OPENCODE_PID=$!
         NEED_UPDATE=true
-        sleep 1
+        sleep 3
       fi
       # Restart caddy if it died
       if ! kill -0 "$CADDY_PID" 2>/dev/null; then
