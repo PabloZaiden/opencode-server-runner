@@ -151,6 +151,7 @@ stop_server() {
     kill "$CADDY_PID" 2>/dev/null
     rm -f "$PID_FILE"
     rm -f "$CADDYFILE"
+    rm -f "$HOME/.config/opencode-watchdog.sh"
     echo "Server stopped."
   else
     echo "No running server found."
@@ -158,40 +159,53 @@ stop_server() {
 }
 
 # Watchdog: monitors and restarts processes if they die
+# Written to a script file and run detached so it survives parent shell exit
 start_watchdog() {
-  (
-    while true; do
-      sleep 5
-      # Check if stop was requested
-      if [ -f "$STOP_FLAG" ]; then
-        exit 0
-      fi
-      if [ ! -f "$PID_FILE" ]; then
-        exit 0
-      fi
-      read OPENCODE_PID CADDY_PID _WATCHDOG_PID < "$PID_FILE"
-      NEED_UPDATE=false
-      # Restart opencode if it died
-      if ! kill -0 "$OPENCODE_PID" 2>/dev/null; then
-        echo "$(date): OpenCode process died. Restarting..." >> "$LOG_FILE"
-        opencode serve --hostname 127.0.0.1 --port $OPENCODE_INTERNAL_PORT >> "$LOG_FILE" 2>&1 &
-        OPENCODE_PID=$!
-        NEED_UPDATE=true
-        sleep 3
-      fi
-      # Restart caddy if it died
-      if ! kill -0 "$CADDY_PID" 2>/dev/null; then
-        echo "$(date): Caddy process died. Restarting..." >> "$LOG_FILE"
-        caddy run --config "$CADDYFILE" --adapter caddyfile >> "$LOG_FILE" 2>&1 &
-        CADDY_PID=$!
-        NEED_UPDATE=true
-      fi
-      if [ "$NEED_UPDATE" = true ]; then
-        echo "$OPENCODE_PID $CADDY_PID $BASHPID" > "$PID_FILE"
-      fi
-    done
-  ) &
-  echo $!
+  local watchdog_script="$HOME/.config/opencode-watchdog.sh"
+  cat > "$watchdog_script" <<WATCHDOG_EOF
+#!/usr/bin/env bash
+export PATH="$HOME/.opencode/bin:\$PATH"
+STOP_FLAG="$STOP_FLAG"
+PID_FILE="$PID_FILE"
+LOG_FILE="$LOG_FILE"
+OPENCODE_INTERNAL_PORT="$OPENCODE_INTERNAL_PORT"
+CADDYFILE="$CADDYFILE"
+while true; do
+  sleep 3
+  # Check if stop was requested
+  if [ -f "\$STOP_FLAG" ]; then
+    exit 0
+  fi
+  if [ ! -f "\$PID_FILE" ]; then
+    exit 0
+  fi
+  read OPENCODE_PID CADDY_PID _WATCHDOG_PID < "\$PID_FILE"
+  NEED_UPDATE=false
+  # Restart opencode if it died
+  if ! kill -0 "\$OPENCODE_PID" 2>/dev/null; then
+    echo "\$(date): OpenCode process died. Restarting..." >> "\$LOG_FILE"
+    opencode serve --hostname 127.0.0.1 --port \$OPENCODE_INTERNAL_PORT >> "\$LOG_FILE" 2>&1 &
+    OPENCODE_PID=\$!
+    NEED_UPDATE=true
+    sleep 3
+  fi
+  # Restart caddy if it died
+  if ! kill -0 "\$CADDY_PID" 2>/dev/null; then
+    echo "\$(date): Caddy process died. Restarting..." >> "\$LOG_FILE"
+    caddy run --config "\$CADDYFILE" --adapter caddyfile >> "\$LOG_FILE" 2>&1 &
+    CADDY_PID=\$!
+    NEED_UPDATE=true
+  fi
+  if [ "\$NEED_UPDATE" = true ]; then
+    echo "\$OPENCODE_PID \$CADDY_PID \$\$" > "\$PID_FILE"
+  fi
+done
+WATCHDOG_EOF
+  chmod +x "$watchdog_script"
+  nohup bash "$watchdog_script" >> "$LOG_FILE" 2>&1 &
+  local pid=$!
+  disown $pid 2>/dev/null
+  echo $pid
 }
 
 # Handle --stop flag
@@ -250,6 +264,7 @@ rm -f "$STOP_FLAG"
 # Start opencode on localhost only (not exposed to network)
 opencode serve --hostname 127.0.0.1 --port $OPENCODE_INTERNAL_PORT >> "$LOG_FILE" 2>&1 &
 OPENCODE_PID=$!
+disown $OPENCODE_PID 2>/dev/null
 
 # Wait a moment for opencode to start
 sleep 1
@@ -257,6 +272,7 @@ sleep 1
 # Start Caddy natively
 caddy run --config "$CADDYFILE" --adapter caddyfile >> "$LOG_FILE" 2>&1 &
 CADDY_PID=$!
+disown $CADDY_PID 2>/dev/null
 
 # Start watchdog to monitor and restart processes
 WATCHDOG_PID=$(start_watchdog)

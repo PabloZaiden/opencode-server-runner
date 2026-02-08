@@ -138,15 +138,16 @@ echo "=== Test 7c: Watchdog restarts killed OpenCode process ==="
 # Start server fresh
 docker exec "$CONTAINER_NAME" bash -c \
   "OPENCODE_PORT=$TEST_PORT bash /workspace/opencode-server.sh --skip-auth" >/dev/null 2>&1
+sleep 2
 # Kill only the opencode process (not via --stop)
 docker exec "$CONTAINER_NAME" bash -c \
-  'OPENCODE_PID=$(cut -d" " -f1 ~/.config/opencode-server.pid); kill "$OPENCODE_PID" 2>/dev/null'
+  'OPENCODE_PID=$(cut -d" " -f1 ~/.config/opencode-server.pid); kill "$OPENCODE_PID" 2>/dev/null || true'
 # Wait for watchdog to detect and restart, then retry checking the server
 RESTART_OK=false
-for i in $(seq 1 6); do
+for _i in $(seq 1 8); do
   sleep 5
   HTTP_CODE=$(docker exec "$CONTAINER_NAME" bash -c \
-    "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:$TEST_PORT" 2>&1)
+    "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:$TEST_PORT" 2>&1 || true)
   if [ "$HTTP_CODE" = "401" ]; then
     RESTART_OK=true
     break
@@ -162,13 +163,13 @@ fi
 echo "=== Test 7d: Watchdog restarts killed Caddy process ==="
 # Kill only the caddy process (not via --stop)
 docker exec "$CONTAINER_NAME" bash -c \
-  'CADDY_PID=$(cut -d" " -f2 ~/.config/opencode-server.pid); kill "$CADDY_PID" 2>/dev/null'
+  'CADDY_PID=$(cut -d" " -f2 ~/.config/opencode-server.pid); kill "$CADDY_PID" 2>/dev/null || true'
 # Wait for watchdog to detect and restart, then retry checking the server
 RESTART_OK=false
-for i in $(seq 1 6); do
+for _i in $(seq 1 8); do
   sleep 5
   HTTP_CODE=$(docker exec "$CONTAINER_NAME" bash -c \
-    "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:$TEST_PORT" 2>&1)
+    "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:$TEST_PORT" 2>&1 || true)
   if [ "$HTTP_CODE" = "401" ]; then
     RESTART_OK=true
     break
