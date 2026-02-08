@@ -169,7 +169,7 @@ start_watchdog() {
       if [ ! -f "$PID_FILE" ]; then
         exit 0
       fi
-      read OPENCODE_PID CADDY_PID WATCHDOG_PID < "$PID_FILE"
+      read OPENCODE_PID CADDY_PID _WATCHDOG_PID < "$PID_FILE"
       NEED_UPDATE=false
       # Restart opencode if it died
       if ! kill -0 "$OPENCODE_PID" 2>/dev/null; then
@@ -187,7 +187,7 @@ start_watchdog() {
         NEED_UPDATE=true
       fi
       if [ "$NEED_UPDATE" = true ]; then
-        echo "$OPENCODE_PID $CADDY_PID $WATCHDOG_PID" > "$PID_FILE"
+        echo "$OPENCODE_PID $CADDY_PID $BASHPID" > "$PID_FILE"
       fi
     done
   ) &
