@@ -134,6 +134,54 @@ else
 fi
 
 # ------------------------------------------------------------------------------
+echo "=== Test 7c: Watchdog restarts killed OpenCode process ==="
+# Start server fresh
+docker exec "$CONTAINER_NAME" bash -c \
+  "OPENCODE_PORT=$TEST_PORT bash /workspace/opencode-server.sh --skip-auth" >/dev/null 2>&1
+# Kill only the opencode process (not via --stop)
+docker exec "$CONTAINER_NAME" bash -c \
+  'OPENCODE_PID=$(cut -d" " -f1 ~/.config/opencode-server.pid); kill "$OPENCODE_PID" 2>/dev/null'
+# Wait for watchdog to detect and restart (watchdog checks every 5 seconds)
+sleep 8
+# Verify server is responding again
+HTTP_CODE=$(docker exec "$CONTAINER_NAME" bash -c \
+  "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:$TEST_PORT" 2>&1)
+if [ "$HTTP_CODE" = "401" ]; then
+  pass "Server auto-restarted after OpenCode process was killed"
+else
+  fail "Server did not auto-restart after kill (got: $HTTP_CODE)"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 7d: Watchdog restarts killed Caddy process ==="
+# Kill only the caddy process (not via --stop)
+docker exec "$CONTAINER_NAME" bash -c \
+  'CADDY_PID=$(cut -d" " -f2 ~/.config/opencode-server.pid); kill "$CADDY_PID" 2>/dev/null'
+# Wait for watchdog to detect and restart
+sleep 8
+# Verify server is responding again
+HTTP_CODE=$(docker exec "$CONTAINER_NAME" bash -c \
+  "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:$TEST_PORT" 2>&1)
+if [ "$HTTP_CODE" = "401" ]; then
+  pass "Server auto-restarted after Caddy process was killed"
+else
+  fail "Server did not auto-restart after Caddy kill (got: $HTTP_CODE)"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 7e: Stop command permanently stops server (no restart) ==="
+docker exec "$CONTAINER_NAME" bash /workspace/opencode-server.sh --stop >/dev/null 2>&1
+# Wait longer than the watchdog interval to confirm it stays down
+sleep 8
+LISTENING=$(docker exec "$CONTAINER_NAME" bash -c "ss -tlnp | grep $TEST_PORT || echo 'not listening'" 2>&1)
+if [[ "$LISTENING" == *"not listening"* ]]; then
+  pass "Server stays stopped after --stop (watchdog does not restart)"
+else
+  fail "Server restarted after --stop (watchdog should not restart)"
+  echo "$LISTENING"
+fi
+
+# ------------------------------------------------------------------------------
 echo "=== Test 8: Password persists after restart ==="
 docker exec "$CONTAINER_NAME" bash -c \
   "OPENCODE_PORT=$TEST_PORT bash /workspace/opencode-server.sh --skip-auth" >/dev/null 2>&1
