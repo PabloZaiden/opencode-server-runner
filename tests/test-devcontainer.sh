@@ -134,6 +134,16 @@ else
 fi
 
 # ------------------------------------------------------------------------------
+echo "=== Test 7c: Stop command kills monitor process ==="
+MONITOR_PROCS=$(docker exec "$CONTAINER_NAME" bash -c 'ps aux | grep "opencode-server" | grep -v grep | grep -v test || echo "no monitor"' 2>&1)
+if [[ "$MONITOR_PROCS" == *"no monitor"* ]]; then
+  pass "Monitor process is terminated"
+else
+  fail "Monitor process still running"
+  echo "$MONITOR_PROCS"
+fi
+
+# ------------------------------------------------------------------------------
 echo "=== Test 8: Password persists after restart ==="
 docker exec "$CONTAINER_NAME" bash -c \
   "OPENCODE_PORT=$TEST_PORT bash /workspace/opencode-server.sh --skip-auth" >/dev/null 2>&1
@@ -168,6 +178,89 @@ if echo "$OUTPUT" | grep -q "Connect via:" && echo "$OUTPUT" | grep -q "Password
   pass "Connection info is displayed"
 else
   fail "Connection info not displayed properly"
+fi
+
+# ------------------------------------------------------------------------------
+# Stop the server from previous tests and start fresh for relaunch tests
+docker exec "$CONTAINER_NAME" bash /workspace/opencode-server.sh --stop >/dev/null 2>&1
+sleep 2
+
+echo "=== Test 11: OpenCode process is relaunched after external kill ==="
+# Start the server with a fast monitor interval for testing
+docker exec "$CONTAINER_NAME" bash -c \
+  "OPENCODE_PORT=$TEST_PORT OPENCODE_MONITOR_INTERVAL=2 bash /workspace/opencode-server.sh --skip-auth" >/dev/null 2>&1
+sleep 2
+
+# Get the opencode PID and kill it
+OPENCODE_PID_BEFORE=$(docker exec "$CONTAINER_NAME" bash -c \
+  'read OPID CPID MPID < ~/.config/opencode-server.pid && echo $OPID' 2>/dev/null)
+docker exec "$CONTAINER_NAME" bash -c "kill $OPENCODE_PID_BEFORE" 2>/dev/null
+
+# Wait for the monitor to detect and relaunch (monitor interval is 2s)
+sleep 5
+
+# Check that a new opencode process exists and has a different PID
+OPENCODE_PID_AFTER=$(docker exec "$CONTAINER_NAME" bash -c \
+  'read OPID CPID MPID < ~/.config/opencode-server.pid && echo $OPID' 2>/dev/null)
+if [ -n "$OPENCODE_PID_AFTER" ] && [ "$OPENCODE_PID_AFTER" != "$OPENCODE_PID_BEFORE" ]; then
+  # Verify the new process is actually running
+  if docker exec "$CONTAINER_NAME" bash -c "kill -0 $OPENCODE_PID_AFTER" 2>/dev/null; then
+    pass "OpenCode process was relaunched (PID $OPENCODE_PID_BEFORE -> $OPENCODE_PID_AFTER)"
+  else
+    fail "New OpenCode PID exists in file but process is not running"
+  fi
+else
+  fail "OpenCode process was not relaunched (PID before=$OPENCODE_PID_BEFORE, after=$OPENCODE_PID_AFTER)"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 12: Caddy process is relaunched after external kill ==="
+# Get the caddy PID and kill it
+CADDY_PID_BEFORE=$(docker exec "$CONTAINER_NAME" bash -c \
+  'read OPID CPID MPID < ~/.config/opencode-server.pid && echo $CPID' 2>/dev/null)
+docker exec "$CONTAINER_NAME" bash -c "kill $CADDY_PID_BEFORE" 2>/dev/null
+
+# Wait for the monitor to detect and relaunch
+sleep 5
+
+# Check that a new caddy process exists and has a different PID
+CADDY_PID_AFTER=$(docker exec "$CONTAINER_NAME" bash -c \
+  'read OPID CPID MPID < ~/.config/opencode-server.pid && echo $CPID' 2>/dev/null)
+if [ -n "$CADDY_PID_AFTER" ] && [ "$CADDY_PID_AFTER" != "$CADDY_PID_BEFORE" ]; then
+  if docker exec "$CONTAINER_NAME" bash -c "kill -0 $CADDY_PID_AFTER" 2>/dev/null; then
+    pass "Caddy process was relaunched (PID $CADDY_PID_BEFORE -> $CADDY_PID_AFTER)"
+  else
+    fail "New Caddy PID exists in file but process is not running"
+  fi
+else
+  fail "Caddy process was not relaunched (PID before=$CADDY_PID_BEFORE, after=$CADDY_PID_AFTER)"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 13: Server still responds after process relaunch ==="
+# Give the relaunched processes time to fully start
+sleep 5
+HTTP_CODE=$(docker exec "$CONTAINER_NAME" bash -c \
+  "curl -k -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 https://127.0.0.1:$TEST_PORT" 2>&1)
+if [ "$HTTP_CODE" = "401" ]; then
+  pass "Server responds with 401 after relaunch on port $TEST_PORT"
+else
+  fail "Expected HTTP 401 after relaunch, got: $HTTP_CODE"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 14: Processes are NOT relaunched after --stop ==="
+# Stop the server using --stop
+docker exec "$CONTAINER_NAME" bash /workspace/opencode-server.sh --stop >/dev/null 2>&1
+sleep 5
+
+# Verify no opencode or caddy processes are running (monitor should not have relaunched them)
+PROCS=$(docker exec "$CONTAINER_NAME" bash -c 'ps aux | grep -E "(opencode serve|caddy run)" | grep -v grep || echo "no processes"' 2>&1)
+if [[ "$PROCS" == *"no processes"* ]]; then
+  pass "Processes were NOT relaunched after --stop"
+else
+  fail "Processes were relaunched after --stop (they should not have been)"
+  echo "$PROCS"
 fi
 
 # ------------------------------------------------------------------------------

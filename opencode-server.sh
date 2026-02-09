@@ -51,11 +51,13 @@ fi
 # Configuration
 PASSWORD_FILE="$HOME/.config/opencode-server-local"
 PID_FILE="$HOME/.config/opencode-server.pid"
+STOP_FLAG="$HOME/.config/opencode-server.stop"
 CERT_DIR="$HOME/.config/opencode-certs"
 CERT_FILE="$CERT_DIR/cert.pem"
 KEY_FILE="$CERT_DIR/key.pem"
 CADDYFILE="$HOME/.config/opencode-caddyfile"
 LOG_FILE="$HOME/.config/opencode-server.log"
+MONITOR_INTERVAL=${OPENCODE_MONITOR_INTERVAL:-5}
 
 OPENCODE_INTERNAL_PORT="4097"
 OPENCODE_HTTPS_PORT=${OPENCODE_PORT-"5000"}
@@ -122,7 +124,7 @@ generate_cert() {
 # Check if server is already running
 is_running() {
   if [ -f "$PID_FILE" ]; then
-    read OPENCODE_PID CADDY_PID < "$PID_FILE"
+    read OPENCODE_PID CADDY_PID MONITOR_PID < "$PID_FILE"
     if kill -0 "$OPENCODE_PID" 2>/dev/null && kill -0 "$CADDY_PID" 2>/dev/null; then
       return 0
     fi
@@ -132,8 +134,14 @@ is_running() {
 
 # Stop the running server
 stop_server() {
+  # Set the stop flag so the monitor knows this is intentional
+  touch "$STOP_FLAG"
   if [ -f "$PID_FILE" ]; then
-    read OPENCODE_PID CADDY_PID < "$PID_FILE"
+    read OPENCODE_PID CADDY_PID MONITOR_PID < "$PID_FILE"
+    if [ -n "$MONITOR_PID" ]; then
+      echo "Stopping monitor (PID: $MONITOR_PID)..."
+      kill "$MONITOR_PID" 2>/dev/null
+    fi
     echo "Stopping OpenCode server (PID: $OPENCODE_PID)..."
     kill "$OPENCODE_PID" 2>/dev/null
     echo "Stopping Caddy proxy (PID: $CADDY_PID)..."
@@ -161,6 +169,18 @@ if is_running; then
   print_info
   exit 0
 fi
+
+# Clean up any orphaned processes from a previous run
+if [ -f "$PID_FILE" ]; then
+  read OLD_OPENCODE_PID OLD_CADDY_PID OLD_MONITOR_PID < "$PID_FILE"
+  kill "$OLD_OPENCODE_PID" 2>/dev/null || true
+  kill "$OLD_CADDY_PID" 2>/dev/null || true
+  [ -n "$OLD_MONITOR_PID" ] && kill "$OLD_MONITOR_PID" 2>/dev/null || true
+  rm -f "$PID_FILE"
+fi
+
+# Remove stop flag for fresh start
+rm -f "$STOP_FLAG"
 
 # Check if caddy is installed, if not install it (Linux only)
 if ! command -v caddy &> /dev/null; then
@@ -207,12 +227,76 @@ sleep 1
 caddy run --config "$CADDYFILE" --adapter caddyfile >> "$LOG_FILE" 2>&1 &
 CADDY_PID=$!
 
-# Save PIDs to file
-echo "$OPENCODE_PID $CADDY_PID" > "$PID_FILE"
+# Start the process monitor in the background
+# The monitor watches both processes and relaunches them if they die unexpectedly.
+# It exits if the stop flag file is present (set by --stop).
+(
+  # Helper: check if a PID is alive and not a zombie
+  is_process_alive() {
+    local pid=$1
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 1
+    fi
+    # Check for zombie (defunct) state - works on Linux
+    if [ -f "/proc/$pid/status" ]; then
+      if grep -q "^State:.*Z" "/proc/$pid/status" 2>/dev/null; then
+        # Reap the zombie
+        wait "$pid" 2>/dev/null
+        return 1
+      fi
+    fi
+    return 0
+  }
+
+  while true; do
+    sleep "$MONITOR_INTERVAL"
+
+    # If the stop flag exists, this is an intentional shutdown - exit monitor
+    if [ -f "$STOP_FLAG" ]; then
+      exit 0
+    fi
+
+    # Read current PIDs from the PID file
+    if [ ! -f "$PID_FILE" ]; then
+      exit 0
+    fi
+    read CUR_OPENCODE_PID CUR_CADDY_PID CUR_MONITOR_PID < "$PID_FILE"
+
+    NEED_UPDATE=false
+
+    # Check if opencode is alive
+    if ! is_process_alive "$CUR_OPENCODE_PID"; then
+      if [ -f "$STOP_FLAG" ]; then exit 0; fi
+      echo "$(date): OpenCode process died, relaunching..." >> "$LOG_FILE"
+      opencode serve --hostname 127.0.0.1 --port $OPENCODE_INTERNAL_PORT >> "$LOG_FILE" 2>&1 &
+      CUR_OPENCODE_PID=$!
+      NEED_UPDATE=true
+    fi
+
+    # Check if caddy is alive
+    if ! is_process_alive "$CUR_CADDY_PID"; then
+      if [ -f "$STOP_FLAG" ]; then exit 0; fi
+      echo "$(date): Caddy process died, relaunching..." >> "$LOG_FILE"
+      caddy run --config "$CADDYFILE" --adapter caddyfile >> "$LOG_FILE" 2>&1 &
+      CUR_CADDY_PID=$!
+      NEED_UPDATE=true
+    fi
+
+    # Update PID file if any process was relaunched
+    if [ "$NEED_UPDATE" = true ]; then
+      echo "$CUR_OPENCODE_PID $CUR_CADDY_PID $CUR_MONITOR_PID" > "$PID_FILE"
+    fi
+  done
+) >> "$LOG_FILE" 2>&1 &
+MONITOR_PID=$!
+
+# Save PIDs to file (opencode, caddy, monitor)
+echo "$OPENCODE_PID $CADDY_PID $MONITOR_PID" > "$PID_FILE"
 
 echo "OpenCode server started in background."
 echo "OpenCode PID: $OPENCODE_PID"
 echo "Caddy PID: $CADDY_PID"
+echo "Monitor PID: $MONITOR_PID"
 echo "Logs: $LOG_FILE"
 echo
 print_info
