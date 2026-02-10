@@ -28,35 +28,52 @@ for arg in "$@"; do
   fi
 done
 
-# Check if authenticated with GitHub Copilot (skip if --skip-auth or --stop)
+# Check if authenticated (skip if --skip-auth or --stop)
 if [ "$SKIP_AUTH" = "false" ] && [ "$1" != "--stop" ]; then
   AUTH_FILE="$HOME/.local/share/opencode/auth.json"
-  if [ ! -f "$AUTH_FILE" ] || ! grep -q "github-copilot" "$AUTH_FILE" 2>/dev/null; then
+  if [ ! -f "$AUTH_FILE" ] || [ ! -s "$AUTH_FILE" ]; then
     echo ""
-    echo "GitHub Copilot authentication required."
+    echo "OpenCode authentication required."
     echo "A browser/device code flow will be initiated..."
     echo ""
-    opencode auth login github-copilot
+    opencode auth login
     
     # Verify auth succeeded
-    if [ ! -f "$AUTH_FILE" ] || ! grep -q "github-copilot" "$AUTH_FILE" 2>/dev/null; then
-      echo "GitHub Copilot authentication failed or was cancelled."
+    if [ ! -f "$AUTH_FILE" ] || [ ! -s "$AUTH_FILE" ]; then
+      echo "Authentication failed or was cancelled."
       exit 1
     fi
-    echo "GitHub Copilot authentication successful."
+    echo "Authentication successful."
     echo ""
   fi
 fi
 
+# Determine data directory: use .opencode-server in the repo root if inside a git
+# repo, otherwise fall back to ~/.config
+if git rev-parse --show-toplevel &>/dev/null; then
+  GIT_ROOT="$(git rev-parse --show-toplevel)"
+  DATA_DIR="$GIT_ROOT/.opencode-server"
+  mkdir -p "$DATA_DIR"
+
+  # Locally ignore the data directory so it's never committed
+  EXCLUDE_FILE="$GIT_ROOT/.git/info/exclude"
+  mkdir -p "$(dirname "$EXCLUDE_FILE")"
+  if ! grep -qxF '.opencode-server' "$EXCLUDE_FILE" 2>/dev/null; then
+    echo '.opencode-server' >> "$EXCLUDE_FILE"
+  fi
+else
+  DATA_DIR="$HOME/.config"
+fi
+
 # Configuration
-PASSWORD_FILE="$HOME/.config/opencode-server-local"
-PID_FILE="$HOME/.config/opencode-server.pid"
-STOP_FLAG="$HOME/.config/opencode-server.stop"
-CERT_DIR="$HOME/.config/opencode-certs"
+PASSWORD_FILE="$DATA_DIR/opencode-server-local"
+PID_FILE="$DATA_DIR/opencode-server.pid"
+STOP_FLAG="$DATA_DIR/opencode-server.stop"
+CERT_DIR="$DATA_DIR/opencode-certs"
 CERT_FILE="$CERT_DIR/cert.pem"
 KEY_FILE="$CERT_DIR/key.pem"
-CADDYFILE="$HOME/.config/opencode-caddyfile"
-LOG_FILE="$HOME/.config/opencode-server.log"
+CADDYFILE="$DATA_DIR/opencode-caddyfile"
+LOG_FILE="$DATA_DIR/opencode-server.log"
 MONITOR_INTERVAL=${OPENCODE_MONITOR_INTERVAL:-5}
 
 OPENCODE_INTERNAL_PORT="4097"

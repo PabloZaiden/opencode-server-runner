@@ -263,6 +263,152 @@ else
   echo "$PROCS"
 fi
 
+# ==============================================================================
+# GIT REPO DATA DIRECTORY TESTS
+# ==============================================================================
+echo ""
+echo -e "${YELLOW}Setting up git repo tests...${NC}"
+
+# Stop any running server and clean up state from previous tests
+docker exec "$CONTAINER_NAME" bash /workspace/opencode-server.sh --stop >/dev/null 2>&1
+sleep 2
+
+# Create a git repo inside the container
+docker exec "$CONTAINER_NAME" bash -c \
+  'mkdir -p /tmp/test-repo && cd /tmp/test-repo && git init && git config user.email "test@test.com" && git config user.name "Test"' >/dev/null 2>&1
+
+# Copy the script into the repo (since /workspace is read-only)
+docker exec "$CONTAINER_NAME" bash -c 'cp /workspace/opencode-server.sh /tmp/test-repo/' >/dev/null 2>&1
+
+# ------------------------------------------------------------------------------
+echo "=== Test 15: Data is stored in .opencode-server/ inside a git repo ==="
+OUTPUT=$(docker exec "$CONTAINER_NAME" bash -c \
+  "cd /tmp/test-repo && OPENCODE_PORT=$TEST_PORT bash opencode-server.sh --skip-auth 2>&1")
+if echo "$OUTPUT" | grep -q "OpenCode server started"; then
+  # Check that data dir was created inside the repo
+  if docker exec "$CONTAINER_NAME" bash -c 'test -d /tmp/test-repo/.opencode-server'; then
+    pass "Data directory .opencode-server/ created inside git repo"
+  else
+    fail "Data directory .opencode-server/ not found inside git repo"
+  fi
+else
+  fail "Script did not start server from git repo"
+  echo "$OUTPUT"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 16: .git/info/exclude contains .opencode-server ==="
+EXCLUDE_CONTENT=$(docker exec "$CONTAINER_NAME" bash -c 'cat /tmp/test-repo/.git/info/exclude' 2>/dev/null)
+if echo "$EXCLUDE_CONTENT" | grep -qxF '.opencode-server'; then
+  pass ".opencode-server is in .git/info/exclude"
+else
+  fail ".opencode-server not found in .git/info/exclude"
+  echo "Exclude file contents: $EXCLUDE_CONTENT"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 17: Password file is inside .opencode-server/ ==="
+GIT_PASSWORD=$(docker exec "$CONTAINER_NAME" bash -c 'cat /tmp/test-repo/.opencode-server/opencode-server-local' 2>/dev/null)
+if [ -n "$GIT_PASSWORD" ]; then
+  pass "Password file found in .opencode-server/: ${GIT_PASSWORD:0:8}..."
+else
+  fail "Password file not found in .opencode-server/"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 18: PID file is inside .opencode-server/ ==="
+if docker exec "$CONTAINER_NAME" bash -c 'test -f /tmp/test-repo/.opencode-server/opencode-server.pid'; then
+  pass "PID file found in .opencode-server/"
+else
+  fail "PID file not found in .opencode-server/"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 19: Certs are inside .opencode-server/ ==="
+if docker exec "$CONTAINER_NAME" bash -c 'test -f /tmp/test-repo/.opencode-server/opencode-certs/cert.pem'; then
+  pass "Certificate found in .opencode-server/opencode-certs/"
+else
+  fail "Certificate not found in .opencode-server/opencode-certs/"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 20: Log file is inside .opencode-server/ ==="
+if docker exec "$CONTAINER_NAME" bash -c 'test -f /tmp/test-repo/.opencode-server/opencode-server.log'; then
+  pass "Log file found in .opencode-server/"
+else
+  fail "Log file not found in .opencode-server/"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 21: Server responds on HTTPS port (git repo mode) ==="
+HTTP_CODE=$(docker exec "$CONTAINER_NAME" bash -c \
+  "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1:$TEST_PORT" 2>&1)
+if [ "$HTTP_CODE" = "401" ]; then
+  pass "Server responds with 401 on port $TEST_PORT (git repo mode)"
+else
+  fail "Expected HTTP 401, got: $HTTP_CODE (git repo mode)"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 22: Stop works in git repo mode ==="
+docker exec "$CONTAINER_NAME" bash -c \
+  "cd /tmp/test-repo && bash opencode-server.sh --stop" >/dev/null 2>&1
+sleep 2
+LISTENING=$(docker exec "$CONTAINER_NAME" bash -c "ss -tlnp | grep $TEST_PORT || echo 'not listening'" 2>&1)
+if [[ "$LISTENING" == *"not listening"* ]]; then
+  pass "Server stopped in git repo mode"
+else
+  fail "Server still listening after stop in git repo mode"
+  echo "$LISTENING"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 23: Password persists after restart in git repo mode ==="
+docker exec "$CONTAINER_NAME" bash -c \
+  "cd /tmp/test-repo && OPENCODE_PORT=$TEST_PORT bash opencode-server.sh --skip-auth" >/dev/null 2>&1
+GIT_PASSWORD2=$(docker exec "$CONTAINER_NAME" bash -c 'cat /tmp/test-repo/.opencode-server/opencode-server-local' 2>/dev/null)
+if [ "$GIT_PASSWORD" = "$GIT_PASSWORD2" ]; then
+  pass "Password persisted across restart in git repo mode"
+else
+  fail "Password changed after restart in git repo mode"
+fi
+
+# Stop server before next test
+docker exec "$CONTAINER_NAME" bash -c \
+  "cd /tmp/test-repo && bash opencode-server.sh --stop" >/dev/null 2>&1
+sleep 2
+
+# ------------------------------------------------------------------------------
+echo "=== Test 24: .git/info/exclude entry is not duplicated on repeated runs ==="
+EXCLUDE_COUNT=$(docker exec "$CONTAINER_NAME" bash -c \
+  'grep -cx ".opencode-server" /tmp/test-repo/.git/info/exclude' 2>/dev/null)
+if [ "$EXCLUDE_COUNT" = "1" ]; then
+  pass ".opencode-server appears exactly once in .git/info/exclude"
+else
+  fail ".opencode-server appears $EXCLUDE_COUNT times in .git/info/exclude (expected 1)"
+fi
+
+# ------------------------------------------------------------------------------
+echo "=== Test 25: Data stored in ~/.config/ when not in a git repo ==="
+# Run from /tmp which is not a git repo
+OUTPUT=$(docker exec "$CONTAINER_NAME" bash -c \
+  "cd /tmp && OPENCODE_PORT=$TEST_PORT bash /workspace/opencode-server.sh --skip-auth 2>&1")
+if echo "$OUTPUT" | grep -q "OpenCode server started"; then
+  if docker exec "$CONTAINER_NAME" bash -c 'test -f ~/.config/opencode-server.pid'; then
+    pass "Data stored in ~/.config/ when not in a git repo"
+  else
+    fail "PID file not found in ~/.config/ when not in a git repo"
+  fi
+else
+  fail "Script did not start server from non-git directory"
+  echo "$OUTPUT"
+fi
+
+# Stop the non-git-repo server
+docker exec "$CONTAINER_NAME" bash -c \
+  "cd /tmp && bash /workspace/opencode-server.sh --stop" >/dev/null 2>&1
+sleep 2
+
 # ------------------------------------------------------------------------------
 echo ""
 echo "========================================"
