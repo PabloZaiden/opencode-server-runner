@@ -18,14 +18,14 @@ curl -fsSL https://raw.githubusercontent.com/PabloZaiden/opencode-server-runner/
 
 VS Code will automatically detect the exposed port and offer to forward it.
 
-## GitHub Copilot Authentication
+## Authentication
 
-On first run, if you're not authenticated with GitHub Copilot, the script will initiate an authentication flow:
+On first run, if you're not authenticated, the script will initiate an authentication flow:
 
 1. A URL and device code will be displayed in the terminal
 2. Visit the URL in your browser
 3. Enter the device code
-4. Authorize OpenCode to access GitHub Copilot
+4. Authorize OpenCode to access your chosen provider
 5. The script will continue once authentication is complete
 
 Your authentication persists in `~/.local/share/opencode/auth.json` and will survive container restarts (but not rebuilds).
@@ -75,12 +75,18 @@ OPENCODE_PORT=5001 ./opencode-server.sh
 
 1. Installs OpenCode CLI (if not present)
 2. Installs Caddy (if not present, Linux only)
-3. Authenticates with GitHub Copilot (if not already authenticated)
-4. Generates a persistent password (stored in `~/.config/opencode-server-local`)
-5. Creates a self-signed SSL certificate (stored in `~/.config/opencode-certs/`)
+3. Authenticates with a provider (if not already authenticated)
+4. Generates a persistent password
+5. Creates a self-signed SSL certificate
 6. Starts OpenCode server on localhost:4097
 7. Starts Caddy as an HTTPS reverse proxy on the configured port
 8. Prints connection info (IP, port, username, password)
+
+## Data Storage
+
+When run inside a **git repository**, all server data (password, PID file, certificates, logs, Caddyfile) is stored in `.opencode-server/` at the repository root. This directory is automatically added to `.git/info/exclude` so it won't be committed.
+
+When run **outside a git repository**, data is stored in `~/.config/` (the previous default behavior).
 
 ## Configuration
 
@@ -90,14 +96,16 @@ OPENCODE_PORT=5001 ./opencode-server.sh
 
 ## Files
 
-| Path | Description |
+| File | Description |
 |------|-------------|
-| `~/.local/share/opencode/auth.json` | GitHub Copilot authentication |
-| `~/.config/opencode-server-local` | Persistent password |
-| `~/.config/opencode-server.pid` | PID file for running instance |
-| `~/.config/opencode-server.log` | Server logs |
-| `~/.config/opencode-certs/` | SSL certificates |
-| `~/.config/opencode-caddyfile` | Generated Caddy configuration |
+| `~/.local/share/opencode/auth.json` | Provider authentication |
+| `<data-dir>/opencode-server-local` | Persistent password |
+| `<data-dir>/opencode-server.pid` | PID file for running instance |
+| `<data-dir>/opencode-server.log` | Server logs |
+| `<data-dir>/opencode-certs/` | SSL certificates |
+| `<data-dir>/opencode-caddyfile` | Generated Caddy configuration |
+
+`<data-dir>` is `.opencode-server/` (in git repos) or `~/.config/` (otherwise).
 
 ## Connecting
 
