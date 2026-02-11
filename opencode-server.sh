@@ -36,7 +36,7 @@ if [ "$SKIP_AUTH" = "false" ] && [ "$1" != "--stop" ]; then
     echo "OpenCode authentication required."
     echo "A browser/device code flow will be initiated..."
     echo ""
-    opencode auth login
+    opencode auth login </dev/tty
     
     # Verify auth succeeded
     if [ ! -f "$AUTH_FILE" ] || [ ! -s "$AUTH_FILE" ]; then
