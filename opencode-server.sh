@@ -18,6 +18,15 @@ if ! command -v opencode &> /dev/null; then
     exit 1
   fi
   echo "opencode installed successfully."
+
+  # Persist PATH for future shells if not already configured
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+    if [ -f "$rc" ] && ! grep -q '.opencode/bin' "$rc"; then
+      echo "" >> "$rc"
+      echo "# OpenCode" >> "$rc"
+      echo 'export PATH="$HOME/.opencode/bin:$PATH"' >> "$rc"
+    fi
+  done
 fi
 
 # Handle --skip-auth flag (for automated testing)
